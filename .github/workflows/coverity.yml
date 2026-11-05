@@ -1,0 +1,71 @@
+name: coverity
+
+on:
+  schedule:
+    - cron: '23 4 * * 0'
+  workflow_dispatch:
+
+concurrency:
+  group: coverity
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TARGETS: LLVMdangcsaCodeGen LLVMdangcsaAsmParser LLVMdangcsaDisassembler LLVMdangcsaDesc LLVMdangcsaInfo llvm-reademiru clangBasic lldELF
+  PROJECT: danglingptr0x0/llvm-project-dangcsa_dangxa
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: free disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: coverity tool
+        env:
+          TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl -sSf -o cov.tgz --data-urlencode "token=$TOKEN" --data-urlencode "project=$PROJECT" https://scan.coverity.com/download/linux64
+          mkdir cov
+          tar -xzf cov.tgz -C cov --strip-components=1
+          echo "$PWD/cov/bin" >> "$GITHUB_PATH"
+
+      - name: configure
+        run: >
+          cmake -S llvm -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLLVM_ENABLE_ASSERTIONS=ON
+          -DLLVM_ENABLE_PROJECTS="clang;lld"
+          -DLLVM_TARGETS_TO_BUILD="X86;Sparc"
+          -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=dangcsa
+          -DLLVM_ENABLE_LIBXML2=OFF
+          -DLLVM_INCLUDE_BENCHMARKS=OFF
+          -DLLVM_INCLUDE_EXAMPLES=OFF
+          -DLLVM_INCLUDE_DOCS=OFF
+          -DLLVM_INCLUDE_TESTS=OFF
+
+      - name: build
+        run: |
+          read -ra targets <<< "$TARGETS"
+          cov-build --dir cov-int cmake --build build -j "$(nproc)" --target "${targets[@]}"
+
+      - name: upload
+        env:
+          TOKEN: ${{ secrets.COVERITY_SCAN_TOKEN }}
+          EMAIL: ${{ secrets.COVERITY_SCAN_EMAIL }}
+        run: |
+          set -euo pipefail
+          tar -czf cov-int.tgz cov-int
+          curl -sSf --form "token=$TOKEN" --form "email=$EMAIL" --form file=@cov-int.tgz --form "version=$GITHUB_SHA" --form "description=$GITHUB_SHA" "https://scan.coverity.com/builds?project=${PROJECT//\//%2F}"

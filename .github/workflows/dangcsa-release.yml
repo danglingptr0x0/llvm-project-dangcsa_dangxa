@@ -1,0 +1,188 @@
+name: dangcsa release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: dangcsa-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TOOLS: clang lld llvm-objcopy llvm-nm llvm-symbolizer llvm-dwarfdump llvm-addr2line llvm-reademiru
+  SHIPPED: clang ld.lld lld-link llvm-addr2line llvm-dwarfdump llvm-nm llvm-objcopy llvm-reademiru llvm-symbolizer
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: free disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: configure
+        run: >
+          cmake -S llvm -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLLVM_ENABLE_ASSERTIONS=ON
+          -DLLVM_ENABLE_PROJECTS="clang;lld"
+          -DLLVM_TARGETS_TO_BUILD="X86;Sparc"
+          -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=dangcsa
+          -DLLVM_ENABLE_LIBXML2=OFF
+          -DLLVM_INCLUDE_BENCHMARKS=OFF
+          -DLLVM_INCLUDE_EXAMPLES=OFF
+          -DLLVM_INCLUDE_DOCS=OFF
+          -DLLVM_INCLUDE_TESTS=OFF
+
+      - name: build
+        run: |
+          read -ra targets <<< "$TOOLS"
+          cmake --build build -j "$(nproc)" --target "${targets[@]}"
+
+      - name: stage
+        run: |
+          set -euo pipefail
+          mkdir -p out/linux/bin out/linux/lib/clang
+          for t in $SHIPPED; do
+            cp -L "build/bin/$t" "out/linux/bin/$t"
+            build/bin/llvm-objcopy --strip-all "out/linux/bin/$t"
+          done
+          cp -rL build/lib/clang/* out/linux/lib/clang/
+          build/bin/clang --version | head -n 1 | grep -o '[0-9][0-9.]*[a-z]*' | head -n 1 > out/version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: out/
+
+  windows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: free disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build mingw-w64 g++-mingw-w64-x86-64-posix gcc-mingw-w64-x86-64-posix
+
+      - name: configure
+        run: >
+          cmake -S llvm -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLLVM_ENABLE_ASSERTIONS=ON
+          -DLLVM_ENABLE_PROJECTS="clang;lld"
+          -DLLVM_TARGETS_TO_BUILD="X86;Sparc"
+          -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=dangcsa
+          -DCMAKE_SYSTEM_NAME=Windows
+          -DCMAKE_SYSTEM_PROCESSOR=x86_64
+          -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc-posix
+          -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++-posix
+          -DCMAKE_RC_COMPILER=x86_64-w64-mingw32-windres
+          -DCMAKE_FIND_ROOT_PATH=/usr/x86_64-w64-mingw32
+          -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
+          -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
+          -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
+          -DLLVM_HOST_TRIPLE=x86_64-w64-windows-gnu
+          -DLLVM_ENABLE_ZLIB=OFF
+          -DLLVM_ENABLE_ZSTD=OFF
+          -DLLVM_ENABLE_LIBXML2=OFF
+          -DLLVM_ENABLE_TERMINFO=OFF
+          -DLLVM_ENABLE_LIBEDIT=OFF
+          -DLLVM_ENABLE_PLUGINS=OFF
+          -DLLVM_INCLUDE_TESTS=OFF
+          -DLLVM_INCLUDE_BENCHMARKS=OFF
+          -DLLVM_INCLUDE_EXAMPLES=OFF
+          -DLLVM_INCLUDE_DOCS=OFF
+
+      - name: build
+        run: |
+          read -ra targets <<< "$TOOLS"
+          cmake --build build -j "$(nproc)" --target "${targets[@]}"
+
+      - name: stage
+        run: |
+          set -euo pipefail
+          gccdir=$(x86_64-w64-mingw32-gcc-posix -print-libgcc-file-name | xargs dirname)
+          gccver=$(basename "$gccdir")
+          mkdir -p out/windows/bin out/windows/lib/clang "out/windows/lib/gcc/x86_64-w64-mingw32/$gccver" out/windows/x86_64-w64-mingw32
+          for t in $SHIPPED; do
+            cp -L "build/bin/$t.exe" "out/windows/bin/$t.exe"
+            x86_64-w64-mingw32-strip --strip-all "out/windows/bin/$t.exe"
+          done
+          cp "$gccdir/libgcc_s_seh-1.dll" "$gccdir/libstdc++-6.dll" out/windows/bin/
+          cp /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll out/windows/bin/
+          cp -rL build/lib/clang/* out/windows/lib/clang/
+          for f in crtbegin.o crtend.o crtfastmath.o libgcc.a libgcc_eh.a; do
+            cp "$gccdir/$f" "out/windows/lib/gcc/x86_64-w64-mingw32/$gccver/"
+          done
+          cp -rL /usr/x86_64-w64-mingw32/lib /usr/x86_64-w64-mingw32/include out/windows/x86_64-w64-mingw32/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/
+
+  release:
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          sparse-checkout: llvm/LICENSE.TXT
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+
+      - name: tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ver=$(cat art/linux/version)
+          last=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName --jq '.[].tagName' | grep -o -- '-r[0-9]*-dangcsa_dangxa$' | grep -o '[0-9]*' | sort -n | tail -n 1)
+          next=$(( ${last:-0} + 1 ))
+          echo "tag=${ver}-r${next}-dangcsa_dangxa" >> "$GITHUB_OUTPUT"
+
+      - name: pack
+        run: |
+          set -euo pipefail
+          tag='${{ steps.tag.outputs.tag }}'
+          for p in linux windows; do
+            cp llvm/LICENSE.TXT "art/$p/LICENSE.TXT"
+            tar -C "art/$p" -cJf "llvm-${tag}-${p}-amd64.tar.xz" LICENSE.TXT "$p"
+          done
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: llvm-*-amd64.tar.xz
+
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          tag='${{ steps.tag.outputs.tag }}'
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$tag" --notes "${NOTES:-$tag}" "llvm-${tag}-linux-amd64.tar.xz" "llvm-${tag}-windows-amd64.tar.xz"

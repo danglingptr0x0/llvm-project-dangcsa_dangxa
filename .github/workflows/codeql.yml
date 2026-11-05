@@ -1,0 +1,65 @@
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '41 2 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: codeql
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TARGETS: LLVMdangcsaCodeGen LLVMdangcsaAsmParser LLVMdangcsaDisassembler LLVMdangcsaDesc LLVMdangcsaInfo llvm-reademiru clangBasic lldELF
+
+jobs:
+  analyze:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: free disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          build-mode: manual
+
+      - name: configure
+        run: >
+          cmake -S llvm -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DLLVM_ENABLE_ASSERTIONS=ON
+          -DLLVM_ENABLE_PROJECTS="clang;lld"
+          -DLLVM_TARGETS_TO_BUILD="X86;Sparc"
+          -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=dangcsa
+          -DLLVM_ENABLE_LIBXML2=OFF
+          -DLLVM_INCLUDE_BENCHMARKS=OFF
+          -DLLVM_INCLUDE_EXAMPLES=OFF
+          -DLLVM_INCLUDE_DOCS=OFF
+          -DLLVM_INCLUDE_TESTS=OFF
+
+      - name: build
+        run: |
+          read -ra targets <<< "$TARGETS"
+          cmake --build build -j "$(nproc)" --target "${targets[@]}"
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:c-cpp
