@@ -1,8 +1,8 @@
 # The LLVM Compiler Infrastructure
 
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/llvm/llvm-project/badge)](https://securityscorecards.dev/viewer/?uri=github.com/llvm/llvm-project)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/8273/badge)](https://www.bestpractices.dev/projects/8273)
-[![libc++](https://github.com/llvm/llvm-project/actions/workflows/libcxx-pr-conformance-tests.yaml/badge.svg?branch=main&event=schedule)](https://github.com/llvm/llvm-project/actions/workflows/libcxx-pr-conformance-tests.yaml?query=event%3Aschedule)
+<a href="https://scorecard.dev/viewer/?uri=github.com/danglingptr0x0/llvm-project-dangcsa_dangxa"><img src="https://api.scorecard.dev/projects/github.com/danglingptr0x0/llvm-project-dangcsa_dangxa/badge"></a>
+<a href="https://sonarcloud.io/summary/new_code?id=danglingptr0x0_llvm-project-dangcsa_dangxa"><img alt="Quality gate status" src="https://sonarcloud.io/api/project_badges/measure?project=danglingptr0x0_llvm-project-dangcsa_dangxa&metric=alert_status"></a>
+<a href="https://www.bestpractices.dev/projects/16363"><img src="https://www.bestpractices.dev/projects/16363/badge"></a>
 
 Welcome to the LLVM project!
 
