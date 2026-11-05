@@ -68,4 +68,10 @@ jobs:
         run: |
           set -euo pipefail
           tar -czf cov-int.tgz cov-int
-          curl -sSf --form "token=$TOKEN" --form "email=$EMAIL" --form file=@cov-int.tgz --form "version=$GITHUB_SHA" --form "description=$GITHUB_SHA" "https://scan.coverity.com/builds?project=${PROJECT//\//%2F}"
+          ls -l cov-int.tgz
+          base="https://scan.coverity.com/projects/${PROJECT//\//%2F}"
+          curl -sSf -o init.json --data-urlencode "token=$TOKEN" --data-urlencode "email=$EMAIL" --data-urlencode "file_name=cov-int.tgz" --data-urlencode "version=$GITHUB_SHA" --data-urlencode "description=$GITHUB_SHA" "$base/builds/init"
+          url=$(jq -r '.url' init.json)
+          id=$(jq -r '.build_id' init.json)
+          curl -sSf -X PUT --header 'Content-Type: application/json' --upload-file cov-int.tgz "$url"
+          curl -sSf -X PUT --data-urlencode "token=$TOKEN" "$base/builds/$id/enqueue"
