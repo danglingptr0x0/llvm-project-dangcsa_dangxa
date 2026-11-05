@@ -54,6 +54,7 @@ jobs:
           -DLLVM_INCLUDE_EXAMPLES=OFF
           -DLLVM_INCLUDE_DOCS=OFF
           -DLLVM_INCLUDE_TESTS=OFF
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: build
         run: |
@@ -63,3 +64,15 @@ jobs:
       - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066
         with:
           category: /language:c-cpp
+
+      - name: sonarqube
+        if: github.event_name != 'pull_request'
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.organization=danglingptr0x0
+            -Dsonar.projectKey=danglingptr0x0_llvm-project-dangcsa_dangxa
+            -Dsonar.sources=llvm/lib/Target/dangcsa,clang/lib/Basic/Targets/dangcsa.cpp,clang/lib/Basic/Targets/dangcsa.h,lld/ELF/Arch/dangcsa.cpp,llvm/lib/Object/EMIRUObjectFile.cpp,llvm/include/llvm/Object/EMIRU.h,llvm/tools/llvm-reademiru
+            -Dsonar.cfamily.compile-commands=build/compile_commands.json
